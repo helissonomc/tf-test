@@ -42,3 +42,11 @@ module "rds" {
   username              = "postgis"
   password              = "password123"
 }
+
+module "alb" {
+  source            = "./modules/alb"
+  security_group_id = module.security_groups.alb_sg_id
+  public_subnet_ids = module.subnets.public_subnets[*].id
+  vpc_id            = module.vpc.vpc_id
+  aws_instances     = module.ec2.aws_instances
+}
