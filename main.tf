@@ -50,3 +50,7 @@ module "alb" {
   vpc_id            = module.vpc.vpc_id
   aws_instances     = module.ec2.aws_instances
 }
+
+module "ecr" {
+  source = "./modules/ecr"
+}
