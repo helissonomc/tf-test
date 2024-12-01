@@ -26,13 +26,13 @@ module "security_groups" {
   vpc_cidr_block = module.vpc.vpc_cidr_block
 }
 
-module "ec2" {
-  source            = "./modules/ec2"
-  ami_id            = "ami-0c02fb55956c7d316" # Example Amazon Linux AMI
-  instance_type     = "t2.micro"
-  public_subnet_id  = module.subnets.public_subnets[0].id
-  security_group_id = module.security_groups.intra_vpc_sg_id
-}
+# module "ec2" {
+#   source            = "./modules/ec2"
+#   ami_id            = "ami-0c02fb55956c7d316" # Example Amazon Linux AMI
+#   instance_type     = "t2.micro"
+#   public_subnet_id  = module.subnets.public_subnets[0].id
+#   security_group_id = module.security_groups.intra_vpc_sg_id
+# }
 
 module "rds" {
   source                = "./modules/rds"
@@ -43,14 +43,25 @@ module "rds" {
   password              = "password123"
 }
 
-module "alb" {
-  source            = "./modules/alb"
-  security_group_id = module.security_groups.alb_sg_id
-  public_subnet_ids = module.subnets.public_subnets[*].id
-  vpc_id            = module.vpc.vpc_id
-  aws_instances     = module.ec2.aws_instances
-}
+# module "alb" {
+#   source            = "./modules/alb"
+#   security_group_id = module.security_groups.alb_sg_id
+#   public_subnet_ids = module.subnets.public_subnets[*].id
+#   vpc_id            = module.vpc.vpc_id
+#   aws_instances     = module.ec2.aws_instances
+# }
 
 module "ecr" {
   source = "./modules/ecr"
+}
+
+module "ecs" {
+  source                = "./modules/ecs"
+  aws_security_group_id = module.security_groups.intra_vpc_sg_id
+  public_subnet_ids     = module.subnets.public_subnets[*].id
+  vpc_id = module.vpc.vpc_id
+}
+
+data "aws_ssm_parameter" "ecs_node_ami" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id"
 }
