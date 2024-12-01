@@ -58,7 +58,8 @@ resource "aws_autoscaling_group" "ecs" {
   name_prefix               = "demo-ecs-asg-"
   vpc_zone_identifier       = var.public_subnet_ids
   min_size                  = 1
-  max_size                  = 8
+  max_size                  = 2
+  desired_capacity = 1
   health_check_grace_period = 0
   health_check_type         = "EC2"
   protect_from_scale_in     = false
@@ -149,23 +150,40 @@ resource "aws_cloudwatch_log_group" "ecs" {
 }
 
 # --- ECS Task Definition ---
-
 resource "aws_ecs_task_definition" "app" {
-  family             = "demo-app"
+  family             = "demo-prod-td"
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
   network_mode       = "awsvpc"
-  cpu                = 256
-  memory             = 256
+  cpu                = 900
+  memory             = 900
+  requires_compatibilities = ["EC2"]
 
   container_definitions = jsonencode([{
-    name         = "app",
-    image        = "httpd",
-    essential    = true,
-    portMappings = [{ containerPort = 80, hostPort = 80 }],
+    name         = "webserver-test"
+    image        = "448049820193.dkr.ecr.us-east-1.amazonaws.com/app-ecr:latest"
+    cpu          = 0
+    essential    = true
+    entryPoint   = ["/bin/sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:80"]
+
+    portMappings = [{
+      name            = "webserver-test-80-tcp"
+      containerPort   = 80
+      hostPort        = 80
+      protocol        = "tcp"
+      appProtocol     = "http"
+    }]
 
     environment = [
-      { name = "EXAMPLE", value = "example" }
+      { name = "POSTGRES_USER", value = "postgis" },
+      { name = "POSTGRES_HOST", value = split(":", var.postgres_endpoint)[0] },
+      { name = "CSRF_TRUSTED_ORIGINS", value = "http://localhost,https://localhost" },
+      { name = "SECRET_KEY", value = "*nq!0brcs4&v9vjqmvxd05_0)tv_-#ip&g!bh-=*9)vf*l!4*v_test" },
+      { name = "POSTGRES_PASSWORD", value = var.password },
+      { name = "POSTGRES_PORT", value = "5432" },
+      { name = "POSTGRES_DB", value = var.db_name },
+      { name = "DEBUG", value = "1" },
+      { name = "POSTGRES_USER", value = var.username}
     ]
 
     logConfiguration = {
@@ -177,6 +195,11 @@ resource "aws_ecs_task_definition" "app" {
       }
     },
   }])
+
+  runtime_platform {
+    cpu_architecture       = "X86_64"
+    operating_system_family = "LINUX"
+  }
 }
 
 # --- ECS Service ---
@@ -211,7 +234,7 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
-    container_name   = "app"
+    container_name   = "webserver-test"
     container_port   = 80
   }
 }
@@ -234,7 +257,7 @@ resource "aws_lb_target_group" "app" {
 
   health_check {
     enabled             = true
-    path                = "/"
+    path                = "/api/schema/swagger-ui/"
     port                = 80
     matcher             = 200
     interval            = 10

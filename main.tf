@@ -59,7 +59,11 @@ module "ecs" {
   source                = "./modules/ecs"
   aws_security_group_id = module.security_groups.intra_vpc_sg_id
   public_subnet_ids     = module.subnets.public_subnets[*].id
-  vpc_id = module.vpc.vpc_id
+  vpc_id                = module.vpc.vpc_id
+  postgres_endpoint     = module.rds.postgres_endpoint
+  db_name               = "mydatabase"
+  username              = "postgis"
+  password              = "password123"
 }
 
 data "aws_ssm_parameter" "ecs_node_ami" {
