@@ -202,6 +202,45 @@ resource "aws_ecs_task_definition" "app" {
   }
 }
 
+resource "aws_ecs_task_definition" "newservice" {
+  family             = "prod-td"
+  task_role_arn      = aws_iam_role.ecs_task_role.arn
+  execution_role_arn = aws_iam_role.ecs_exec_role.arn
+  network_mode       = "awsvpc"
+  cpu                = 900
+  memory             = 900
+  requires_compatibilities = ["EC2"]
+
+  container_definitions = jsonencode([{
+    name         = "newservice-test"
+    image        = "httpd"
+    cpu          = 0
+    essential    = true
+
+    portMappings = [{
+      name            = "newservice-test-80-tcp"
+      containerPort   = 80
+      hostPort        = 80
+      protocol        = "tcp"
+      appProtocol     = "http"
+    }]
+
+    logConfiguration = {
+      logDriver = "awslogs",
+      options = {
+        "awslogs-region"        = "us-east-1",
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs.name,
+        "awslogs-stream-prefix" = "newservice"
+      }
+    },
+  }])
+
+  runtime_platform {
+    cpu_architecture       = "X86_64"
+    operating_system_family = "LINUX"
+  }
+}
+
 # --- ECS Service ---
 
 resource "aws_ecs_service" "app" {
@@ -239,6 +278,41 @@ resource "aws_ecs_service" "app" {
   }
 }
 
+resource "aws_ecs_service" "newservice" {
+  name            = "newservice"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.newservice.arn
+  desired_count   = 1
+
+  network_configuration {
+    security_groups = [var.aws_security_group_id]
+    subnets         = var.public_subnet_ids
+  }
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.main.name
+    base              = 1
+    weight            = 100
+  }
+
+  ordered_placement_strategy {
+    type  = "spread"
+    field = "attribute:ecs.availability-zone"
+  }
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
+  depends_on = [aws_lb_target_group.newservice]
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.newservice.arn
+    container_name   = "newservice-test"
+    container_port   = 80
+  }
+}
+
 # --- ALB ---
 
 resource "aws_lb" "main" {
@@ -267,6 +341,25 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
+resource "aws_lb_target_group" "newservice" {
+  name_prefix = "ns-"
+  vpc_id      = var.vpc_id
+  protocol    = "HTTP"
+  port        = 80
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    path                = "/"
+    port                = 80
+    matcher             = 200
+    interval            = 10
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.id
   port              = 80
@@ -278,3 +371,22 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+resource "aws_lb_listener_rule" "newservice" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10  # Ensure the priority is unique and appropriate
+
+  condition {
+    path_pattern {
+      values = ["/newservice/*"]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.newservice.arn
+  }
+
+  tags = {
+    Name = "newservice-name"
+  }
+}
