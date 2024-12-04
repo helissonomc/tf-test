@@ -1,9 +1,9 @@
 resource "aws_db_subnet_group" "db_subnet_group" {
-  name       = "db-subnet-group"
+  name       = "db-subnet-group-new"
   subnet_ids = var.private_subnet_ids
 
   tags = {
-    Name = "db-subnet-group"
+    Name = "db-subnet-group-new"
   }
 }
 
